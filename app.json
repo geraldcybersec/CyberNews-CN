@@ -1,0 +1,34 @@
+{
+  "expo": {
+    "name": "CyberNews CN",
+    "slug": "cybernews-cn",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0B0F19",
+    "ios": {
+      "bundleIdentifier": "com.cybernewscn.app",
+      "buildNumber": "1",
+      "supportsTablet": true,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "privacyManifests": {
+        "NSPrivacyTracking": false,
+        "NSPrivacyTrackingDomains": [],
+        "NSPrivacyCollectedDataTypes": [],
+        "NSPrivacyAccessedAPITypes": []
+      }
+    },
+    "android": {
+      "package": "com.cybernewscn.app",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "backgroundColor": "#0B0F19"
+      },
+      "permissions": [
+        "RECEIVE_BOOT_COMPLETED"
+      ]
+    }
+  }
+}
