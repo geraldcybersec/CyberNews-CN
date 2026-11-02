@@ -27,13 +27,11 @@ jobs:
         run: |
           npm install
 
-      - name: Generate Android Native Project
+      - name: Fix Compose Compiler 1.5.14 for Kotlin 1.9.24 and Prebuild
         run: |
+          find node_modules -name "build.gradle*" -exec sed -i 's/1.5.15/1.5.14/g' {} +
           CI=1 npx expo prebuild --platform android --no-install --clean
-
-      - name: Force Kotlin 1.9.25 for Jetpack Compose Compatibility
-        run: |
-          sed -i 's/kotlinVersion = .*/kotlinVersion = "1.9.25"/' android/build.gradle
+          sed -i 's/1.5.15/1.5.14/g' android/build.gradle || true
 
       - name: Build Standalone Release APK
         working-directory: ./android
