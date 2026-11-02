@@ -1,2 +1,4 @@
 # CyberNews-CN
-Lightweight, zero-login cybersecurity threat &amp; news aggregator (Android/iOS) with CVE deduplication, 12 intel feeds, and a 3-hour anti-spam push engine.
+CyberNews CN is a privacy-first, cross-platform mobile application (React Native / Expo + Cloudflare Workers) built to keep security engineers and defenders updated on breaking zero-days, active exploits, and security research without alert fatigue.
+
+Instead of flooding users with duplicate headlines, the serverless backend aggregates 12 trusted feeds—including CISA Advisories, The Hacker News, BleepingComputer, Krebs on Security, SecurityWeek, Dark Reading, The Record, SANS Internet Storm Center, Schneier on Security, Palo Alto Networks Unit 42, Zero Day Initiative, and r/netsec—merges duplicate stories by CVE/entity fingerprinting, and enforces an event-driven 3-hour push notification cooldown. Built with zero user accounts, zero tracking, strict XML/HTML sanitization, and HTTPS domain allowlisting.
