@@ -12,12 +12,6 @@
       "supportsTablet": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
-      },
-      "privacyManifests": {
-        "NSPrivacyTracking": false,
-        "NSPrivacyTrackingDomains": [],
-        "NSPrivacyCollectedDataTypes": [],
-        "NSPrivacyAccessedAPITypes": []
       }
     },
     "android": {
@@ -27,7 +21,9 @@
         "backgroundColor": "#0B0F19"
       },
       "permissions": [
-        "RECEIVE_BOOT_COMPLETED"
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.VIBRATE"
       ]
     }
   }
