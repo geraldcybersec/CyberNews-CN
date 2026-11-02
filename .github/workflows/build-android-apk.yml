@@ -31,6 +31,10 @@ jobs:
         run: |
           CI=1 npx expo prebuild --platform android --no-install --clean
 
+      - name: Force Kotlin 1.9.25 for Jetpack Compose Compatibility
+        run: |
+          sed -i 's/kotlinVersion = .*/kotlinVersion = "1.9.25"/' android/build.gradle
+
       - name: Build Standalone Release APK
         working-directory: ./android
         run: |
