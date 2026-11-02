@@ -12,30 +12,30 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js 20
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: Set up JDK 17 for Android Gradle
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install dependencies and generate native Android project
+      - name: Install dependencies
         run: |
           npm install
-          npx expo prebuild --platform android --no-install
 
-      - name: Build Standalone APK with Gradle
+      - name: Generate Android Native Project
+        run: |
+          CI=1 npx expo prebuild --platform android --no-install --clean
+
+      - name: Build Standalone Release APK
         working-directory: ./android
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease
+          ./gradlew assembleRelease --no-daemon
 
       - name: Upload Ready-to-Install APK Artifact
         uses: actions/upload-artifact@v4
