@@ -1,0 +1,44 @@
+name: Build Installable Android APK (CyberNews CN)
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Set up JDK 17 for Android Gradle
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies and generate native Android project
+        run: |
+          npm install
+          npx expo prebuild --platform android --no-install
+
+      - name: Build Standalone APK with Gradle
+        working-directory: ./android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease
+
+      - name: Upload Ready-to-Install APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CyberNews-CN-Android-APK
+          path: android/app/build/outputs/apk/release/*.apk
