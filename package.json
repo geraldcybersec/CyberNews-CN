@@ -1,6 +1,7 @@
 {
   "name": "cybernews-cn-mobile",
   "version": "1.0.0",
+  "main": "App.tsx",
   "private": true,
   "scripts": {
     "start": "expo start",
