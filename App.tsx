@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   StyleSheet, View, Text, FlatList, Image, TouchableOpacity,
   Share, Linking, RefreshControl, SafeAreaView, StatusBar,
-  TextInput, ScrollView, Modal, Platform
+  TextInput, ScrollView, Modal, Platform, PermissionsAndroid
 } from 'react-native';
 
 export interface RelatedSource {
@@ -24,6 +24,10 @@ export interface Article {
   cve?: string;
   alsoReportedBy?: RelatedSource[];
 }
+
+// Regla interna del desarrollador (invisible para el usuario):
+// Mínimo 3 horas entre notificaciones push y registro de huellas para evitar duplicados.
+const INTERNAL_PUSH_COOLDOWN_MS = 3 * 60 * 60 * 1000;
 
 const INITIAL_ARTICLES: Article[] = [
   {
@@ -201,22 +205,60 @@ export default function App() {
   const [savedOnly, setSavedOnly] = useState<boolean>(false);
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
-  const [cooldownSec, setCooldownSec] = useState<number>(0);
-  const [pushBanner, setPushBanner] = useState<Article | null>(null);
 
+  // Control interno de ventana de 3 horas (invisible para el usuario)
+  const lastPushTimestampRef = useRef<number>(Date.now());
+  const notifiedFingerprintsRef = useRef<Set<string>>(
+    new Set(INITIAL_ARTICLES.map(a => a.cve || a.id))
+  );
+  const pushPermissionGrantedRef = useRef<boolean>(false);
+
+  // Solicita el permiso nativo de Android para Notificaciones Push al abrir por primera vez
   useEffect(() => {
-    const timer = setInterval(() => {
-      setCooldownSec(prev => (prev > 0 ? prev - 1 : 0));
-    }, 1000);
-    return () => clearInterval(timer);
+    const requestNativePushPermission = async () => {
+      if (Platform.OS === 'android' && Number(Platform.Version) >= 33) {
+        try {
+          const status = await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
+            {
+              title: 'Notificaciones de CyberNews CN',
+              message: 'Permite recibir alertas de vulnerabilidades Zero-Day y ciberataques importantes.',
+              buttonPositive: 'Permitir',
+              buttonNegative: 'No permitir'
+            }
+          );
+          pushPermissionGrantedRef.current = status === PermissionsAndroid.RESULTS.GRANTED;
+        } catch {
+          pushPermissionGrantedRef.current = false;
+        }
+      } else {
+        pushPermissionGrantedRef.current = true;
+      }
+    };
+
+    requestNativePushPermission();
   }, []);
 
-  const formatHMS = (sec: number) => {
-    const h = Math.floor(sec / 3600);
-    const m = Math.floor((sec % 3600) / 60);
-    const s = sec % 60;
-    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-  };
+  // Evaluación interna silenciosa de la regla de 3 horas
+  const evaluateInternalPushWindow = useCallback((incomingItems: Article[]) => {
+    if (!pushPermissionGrantedRef.current || incomingItems.length === 0) return;
+
+    const now = Date.now();
+    const elapsedSinceLastPush = now - lastPushTimestampRef.current;
+
+    if (elapsedSinceLastPush >= INTERNAL_PUSH_COOLDOWN_MS) {
+      const unseenCandidate = incomingItems.find(item => {
+        const fp = item.cve || item.title.slice(0, 40).toLowerCase();
+        return !notifiedFingerprintsRef.current.has(fp);
+      });
+
+      if (unseenCandidate) {
+        const fp = unseenCandidate.cve || unseenCandidate.title.slice(0, 40).toLowerCase();
+        notifiedFingerprintsRef.current.add(fp);
+        lastPushTimestampRef.current = now;
+      }
+    }
+  }, []);
 
   const fetchLiveRSS = useCallback(async () => {
     setRefreshing(true);
@@ -237,36 +279,23 @@ export default function App() {
           articleUrl: String(it.link || 'https://thehackernews.com/'),
           imageUrl: it.thumbnail || (it.enclosure && it.enclosure.link) || 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&w=1080&q=80'
         }));
-        setArticles([...liveItems, ...INITIAL_ARTICLES]);
+
+        const existingTitles = new Set(INITIAL_ARTICLES.map(a => a.title.toLowerCase()));
+        const uniqueLive = liveItems.filter(item => !existingTitles.has(item.title.toLowerCase()));
+
+        evaluateInternalPushWindow(uniqueLive);
+        setArticles([...uniqueLive, ...INITIAL_ARTICLES]);
       }
     } catch {
-      // Fallback offline seguro
+      // Mantiene las noticias en caché si no hay conexión
     } finally {
       setRefreshing(false);
     }
-  }, []);
+  }, [evaluateInternalPushWindow]);
 
-  const simulatePushNotification = () => {
-    if (cooldownSec > 0) {
-      return;
-    }
-    const breaking: Article = {
-      id: 'push-' + Date.now(),
-      sourceName: 'CISA Advisories',
-      sourceBadge: 'CISA',
-      badgeColor: '#EF4444',
-      publishedAgo: 'Ahora',
-      category: 'Vulnerabilidades',
-      cve: 'CVE-2026-21643',
-      title: 'ALERTA CISA: Parche urgente por ejecución remota sin autenticación en servidores corporativos',
-      summary: 'CISA añade una nueva vulnerabilidad crítica CVSS 9.8 a su catálogo KEV de explotación activa. El temporizador anti-spam de 3 horas se ha reiniciado.',
-      articleUrl: 'https://www.cisa.gov/news-events/cybersecurity-advisories',
-      imageUrl: 'https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&w=1080&q=80'
-    };
-    setArticles(prev => [breaking, ...prev]);
-    setPushBanner(breaking);
-    setCooldownSec(3 * 3600);
-  };
+  useEffect(() => {
+    fetchLiveRSS();
+  }, [fetchLiveRSS]);
 
   const shareArticle = async (item: Article, platform?: 'whatsapp' | 'twitter' | 'linkedin') => {
     const shareText = `${item.title} — vía CyberNews CN (${item.sourceName})`;
@@ -324,20 +353,11 @@ export default function App() {
           </View>
           <View>
             <Text style={styles.brandTitle}>CyberNews <Text style={styles.brandAccent}>CN</Text></Text>
-            <Text style={styles.brandSubtitle}>12 Fuentes · Zero-Login · Anti-Clon</Text>
+            <Text style={styles.brandSubtitle}>Inteligencia y Noticias de Ciberseguridad</Text>
           </View>
         </View>
 
         <View style={styles.headerActions}>
-          <TouchableOpacity
-            onPress={simulatePushNotification}
-            style={[styles.pushPill, cooldownSec > 0 ? styles.pushPillCooldown : styles.pushPillReady]}
-          >
-            <Text style={styles.pushPillText}>
-              {cooldownSec > 0 ? `Push: ${formatHMS(cooldownSec)}` : '🔔 Probar Push (3h)'}
-            </Text>
-          </TouchableOpacity>
-
           <TouchableOpacity
             onPress={() => setSavedOnly(!savedOnly)}
             style={[styles.favFilterBtn, savedOnly && styles.favFilterBtnActive]}
@@ -348,18 +368,6 @@ export default function App() {
           </TouchableOpacity>
         </View>
       </View>
-
-      {pushBanner && (
-        <View style={styles.pushBannerBox}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.pushBannerTag}>NOTIFICACIÓN PUSH · TIMER 3H REINICIADO</Text>
-            <Text style={styles.pushBannerTitle} numberOfLines={2}>{pushBanner.title}</Text>
-          </View>
-          <TouchableOpacity onPress={() => setPushBanner(null)} style={styles.pushBannerClose}>
-            <Text style={{ color: '#9CA3AF', fontWeight: 'bold' }}>✕</Text>
-          </TouchableOpacity>
-        </View>
-      )}
 
       <View style={styles.filterSection}>
         <TextInput
@@ -403,7 +411,7 @@ export default function App() {
               {item.alsoReportedBy && item.alsoReportedBy.length > 0 && (
                 <View style={styles.dedupRow}>
                   <Text style={styles.dedupBadge}>
-                    🔗 1 tarjeta única · También en: {item.alsoReportedBy.map(s => s.name).join(', ')}
+                    🔗 También reportado por: {item.alsoReportedBy.map(s => s.name).join(', ')}
                   </Text>
                 </View>
               )}
@@ -452,7 +460,7 @@ export default function App() {
 
                 {selectedArticle.alsoReportedBy && selectedArticle.alsoReportedBy.length > 0 && (
                   <View style={styles.modalDedupBox}>
-                    <Text style={styles.modalDedupTitle}>🔗 Otras fuentes agrupadas (Anti-Duplicados):</Text>
+                    <Text style={styles.modalDedupTitle}>🔗 Otras coberturas de esta misma noticia:</Text>
                     {selectedArticle.alsoReportedBy.map(src => (
                       <TouchableOpacity key={src.name} onPress={() => Linking.openURL(src.url)}>
                         <Text style={styles.modalDedupLink}>• {src.name} ↗</Text>
@@ -502,19 +510,11 @@ const styles = StyleSheet.create({
   logoText: { color: '#22D3EE', fontWeight: '900', fontSize: 14 },
   brandTitle: { color: '#FFFFFF', fontSize: 17, fontWeight: '800' },
   brandAccent: { color: '#22D3EE' },
-  brandSubtitle: { color: '#94A3B8', fontSize: 10 },
+  brandSubtitle: { color: '#94A3B8', fontSize: 11 },
   headerActions: { flexDirection: 'row', alignItems: 'center' },
-  pushPill: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16, borderWidth: 1, marginRight: 8 },
-  pushPillReady: { backgroundColor: '#064E3B', borderColor: '#10B981' },
-  pushPillCooldown: { backgroundColor: '#451A03', borderColor: '#F59E0B' },
-  pushPillText: { color: '#ECFDF5', fontSize: 11, fontWeight: '700' },
-  favFilterBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16, backgroundColor: '#1E293B', borderWidth: 1, borderColor: '#334155' },
+  favFilterBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: '#1E293B', borderWidth: 1, borderColor: '#334155' },
   favFilterBtnActive: { backgroundColor: '#4C0519', borderColor: '#F43F5E' },
   favFilterText: { color: '#F8FAFC', fontSize: 12, fontWeight: '700' },
-  pushBannerBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#0F172A', borderColor: '#06B6D4', borderWidth: 1, marginHorizontal: 12, marginTop: 8, padding: 12, borderRadius: 12 },
-  pushBannerTag: { color: '#22D3EE', fontSize: 10, fontWeight: '800' },
-  pushBannerTitle: { color: '#FFFFFF', fontSize: 13, fontWeight: '700', marginTop: 2 },
-  pushBannerClose: { padding: 6, marginLeft: 8 },
   filterSection: { backgroundColor: '#12151E', paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#1F2433' },
   searchInput: { backgroundColor: '#1A1F2E', color: '#F3F4F6', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, borderWidth: 1, borderColor: '#334155', marginBottom: 8 },
   catScroll: { flexDirection: 'row' },
